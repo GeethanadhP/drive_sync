@@ -1,14 +1,16 @@
+import io
 import json
 
-from googleapiclient.discovery import build
+from googleapiclient.discovery import MediaFileUpload, build
+from googleapiclient.http import MediaIoBaseDownload
 
 
 class GoogleDrive:
     mime_types = {"folder": "application/vnd.google-apps.folder"}
 
     def __init__(self, creds):
-        self.drive = build("drive", "v3", credentials=creds)
-        self.files = self.drive.files()  # pylint: disable=no-member
+        self.service = build("drive", "v3", credentials=creds)
+        self.files = self.service.files()  # pylint: disable=no-member
 
     def _list_files(self, query):
         page_token = None
@@ -28,24 +30,20 @@ class GoogleDrive:
 
         return file_list
 
-    def list_files(self):
+    def list_all_files(self):
+        query = "('me' in owners) and (trashed=false)"
+        return self._list_files(query)
+
+    def list_files(self, root_id):
         query = "('me' in owners) and (trashed=false)"
         return self._list_files(query)
 
     def get_root(self):
         return self.files.get(fileId="root").execute()
 
-    def list_root_files(self):
-        query = f"""
-            ('me' in owners)
-            and (trashed = false)
-            and ('root' in parents)
-        """
-        return self._list_files(query)
-
-    def generate_structure(self, file_list):
-        root_folder = DriveFolder(self.get_root())
-        file_map = {root_folder.id: root_folder}
+    def generate_tree(self, root):
+        file_list = self.list_files(root.id)
+        file_map = {root.id: root}
 
         for data in file_list:
             if data["mimeType"] == GoogleDrive.mime_types["folder"]:
@@ -57,7 +55,25 @@ class GoogleDrive:
             for pid in d_file.parents:
                 file_map[pid].add_child(d_file)
 
-        return root_folder
+        root.generate_child_paths()
+
+    def download(self, file_id, path):
+        req = self.files.get_media(fileId=file_id)
+        with path.open("wb") as f:
+            downloader = MediaIoBaseDownload(f, req)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+                # print("Download %d%%." % int(status.progress() * 100))
+
+    def upload(self, local_path, parent_id):
+        file_metadata = {"name": local_path.name}
+
+        media = MediaFileUpload(local_path, mimetype="image/jpeg")
+        new_file = self.files.create(
+            body=file_metadata, media_body=media, fields="id"
+        ).execute()
+        return new_file
 
 
 class DriveFile:
@@ -67,6 +83,7 @@ class DriveFile:
         self.id = data["id"]
         self.name = data["name"]
         self.parents = data.get("parents", [])
+        self.path = None
 
     def json(self):
         return self.name
@@ -90,6 +107,12 @@ class DriveFolder(DriveFile):
 
     def add_child(self, child):
         self.children.append(child)
+
+    def generate_child_paths(self):
+        for child in self.children:
+            child.path = self.path / child.name
+            if child.kind == "folder":
+                child.generate_child_paths()
 
     def json(self):
         return {self.name: [x.json() for x in self.children]}

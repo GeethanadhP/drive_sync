@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "/home/royce/.drive_sync"
+		}
+	],
+	"settings": {
+		"cSpell.words": [
+			"creds",
+			"gdrive",
+			"googleapiclient"
+		]
+	}
+}
