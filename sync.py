@@ -1,10 +1,9 @@
-import os
 from pathlib import Path
 
 from yaml import safe_load
 
 from auth import get_creds
-from model import DriveFolder, GoogleDrive
+from model import DriveFile, GoogleDrive
 
 data_path = Path.home() / ".drive_sync"
 
@@ -25,8 +24,8 @@ for account, account_config in config["gdrive"].items():
             raise RuntimeError(f"{account} is not logged in")
 
     drive = GoogleDrive(creds)
-    root = DriveFolder(drive.get_root())
-    root.path = account_config['target']
-    
-    drive.generate_tree(root)
+    root = DriveFile(drive.get_root())
+    root.path = account_config["target"]
 
+    drive.generate_tree(root)
+    drive.download(root)

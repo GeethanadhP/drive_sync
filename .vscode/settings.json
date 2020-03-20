@@ -1,3 +1,11 @@
 {
   "python.pythonPath": ".env/bin/python3",
+  "cSpell.words": [
+    "creds",
+    "gddoc",
+    "gdrive",
+    "gdsheet",
+    "googleapiclient",
+    "gsheet"
+  ],
 }
