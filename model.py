@@ -66,6 +66,13 @@ mime_types = {
 }
 
 
+def get_mime(value):
+    for k, v in mime_types.items():
+        if v == value:
+            return k
+    raise ValueError(f"Value {value} not found in mime types")
+
+
 def mime_mapper(value):
     if value in mime_types:
         return mime_types[value]
@@ -190,27 +197,47 @@ class GoogleDrive:
         for path, row in df.iterrows():
             if row["parent"] is None:
                 raise RuntimeError(f"parent cannot be null for {path}")
-            if row["cloud_type"] in GoogleDrive.google_mimes:
-                log.warning(f"i have no idea what to do here mate {row['cloud_name']}")
-            elif row["cloud_type"] == "folder":
-                file_metadata = {
-                    "name": row["cloud_name"],
-                    "mimeType": mime_types["folder"],
-                    "parents": [row["parent"]],
-                }
-                new_file = self.files.create(body=file_metadata, fields="id").execute()
+            if row["local_type"] in GoogleDrive.google_mimes:
+                log.info(f'Copying file {path.name}')
+                with path.open() as f:
+                    data = json.load(f)
+                log.info(data['file_id'])
+                new_file = self.files.copy(
+                    fileId=data["file_id"],
+                    body={"name": row["cloud_name"], "parents": [row["parent"]]},
+                    fields="id, webViewLink",
+                ).execute()
+                with path.open("w") as f:
+                    json.dump(
+                        {
+                            "url": new_file['webViewLink'],
+                            "account_email": self.email_address,
+                            "file_id": new_file["id"],
+                        },
+                        f,
+                    )
+            elif row["local_type"] == "folder":
+                log.info(f'Creating folder {path.name}')
+                new_file = self.files.create(
+                    body={
+                        "name": row["cloud_name"],
+                        "mimeType": get_mime("folder"),
+                        "parents": [row["parent"]],
+                    },
+                    fields="id",
+                ).execute()
             else:
-                file_metadata = {"name": row["cloud_name"], "parents": [row["parent"]]}
-
+                log.info(f'Uploading file {path.name}')
                 media = MediaFileUpload(path)
                 new_file = self.files.create(
-                    body=file_metadata, media_body=media, fields="id"
+                    body={"name": row["cloud_name"], "parents": [row["parent"]]}, media_body=media, fields="id"
                 ).execute()
             df.at[path, "id"] = new_file["id"]
         return df
 
     def delete(self, df):
-        for _, row in df.iterrows():
+        for path, row in df.iterrows():
+            log.info(f'Deleting {path.name}')
             self.files.delete(fileId=row["id"]).execute()
 
     def sync(self, root_id, root_path, status):
